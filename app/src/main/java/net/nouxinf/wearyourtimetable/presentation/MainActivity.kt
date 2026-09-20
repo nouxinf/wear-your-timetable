@@ -43,6 +43,8 @@ import androidx.wear.compose.material3.HorizontalPagerScaffold
 import androidx.wear.compose.material3.PagerScaffoldDefaults
 import net.nouxinf.wearyourtimetable.R
 import net.nouxinf.wearyourtimetable.presentation.theme.WearYourTimetableTheme
+import java.time.DayOfWeek
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +61,16 @@ val dayList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 fun WearApp( navigateBack: () -> Unit) {
     WearYourTimetableTheme {
         AppScaffold {
-            val pagerState = rememberPagerState(pageCount = { 5 })
+            val today = LocalDate.now().dayOfWeek
+            val startPage = when (today) {
+                DayOfWeek.SATURDAY, DayOfWeek.SUNDAY -> 0   // fall back to Monday on weekends
+                else -> today.value - 1                      // MONDAY = 1, so subtract 1
+            }
+
+            val pagerState = rememberPagerState(
+                initialPage = startPage,
+                pageCount = { dayList.size }
+            )
 
             HorizontalPagerScaffold(pagerState = pagerState) {
                 HorizontalPager(
@@ -73,7 +84,7 @@ fun WearApp( navigateBack: () -> Unit) {
                         ScreenScaffold {
                             Column(
                                 modifier = Modifier.fillMaxSize()
-                                    .padding(16.dp),
+                                    .padding(18.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Top,
                             ) {
