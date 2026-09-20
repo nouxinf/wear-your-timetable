@@ -8,10 +8,20 @@ package net.nouxinf.wearyourtimetable.presentation
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.wear.compose.foundation.pager.HorizontalPager
+import androidx.wear.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
@@ -27,6 +37,10 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
 import androidx.wear.compose.ui.tooling.preview.WearPreviewFontScales
+import androidx.wear.compose.*
+import androidx.wear.compose.material3.AnimatedPage
+import androidx.wear.compose.material3.HorizontalPagerScaffold
+import androidx.wear.compose.material3.PagerScaffoldDefaults
 import net.nouxinf.wearyourtimetable.R
 import net.nouxinf.wearyourtimetable.presentation.theme.WearYourTimetableTheme
 
@@ -34,59 +48,45 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            WearApp()
+            WearApp( navigateBack = { finish() })
         }
     }
 }
 
+val dayList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+
 @Composable
-fun WearApp() {
+fun WearApp( navigateBack: () -> Unit) {
     WearYourTimetableTheme {
         AppScaffold {
-            val listState = rememberTransformingLazyColumnState()
-            val transformationSpec = rememberTransformationSpec()
-            ScreenScaffold() { contentPadding -> // ScreenScaffold provides default padding; adjust as needed
-                TransformingLazyColumn(contentPadding = contentPadding, state = listState) {
-                    item {
-                        ListHeader(
-                            modifier =
-                                Modifier.fillMaxWidth().transformedHeight(this, transformationSpec),
-                            transformation = SurfaceTransformation(transformationSpec),
-                        ) {
-                            Text(text = stringResource(R.string.hello_world))
-                        }
-                    }
-                    item {
-                        Button(
-                            onClick = { /*TODO*/ },
-                            modifier = Modifier.fillMaxWidth()
-                                .transformedHeight(this, transformationSpec),
-                            transformation = SurfaceTransformation(transformationSpec),
-                        ) {
-                            Text("Button A")
-                        }
-                    }
-                    item {
-                        Button(
-                            onClick = { /*TODO*/ },
-                            modifier = Modifier.fillMaxWidth()
-                                .transformedHeight(this, transformationSpec),
-                            transformation = SurfaceTransformation(transformationSpec),
-                        ) {
-                            Text("Button B")
-                        }
-                    }
-                    item {
-                        Button(
-                            onClick = { /*TODO*/ },
-                            modifier = Modifier.fillMaxWidth()
-                                .transformedHeight(this, transformationSpec),
-                            transformation = SurfaceTransformation(transformationSpec),
-                        ) {
-                            Text("Button C")
-                        }
-                    }
+            val pagerState = rememberPagerState(pageCount = { 5 })
 
+            HorizontalPagerScaffold(pagerState = pagerState) {
+                HorizontalPager(
+                    state = pagerState,
+                    flingBehavior =
+                        PagerScaffoldDefaults.snapWithSpringFlingBehavior(
+                            state = pagerState
+                        ),
+                ) { page ->
+                    AnimatedPage(pageIndex = page, pagerState = pagerState) {
+                        ScreenScaffold {
+                            Column(
+                                modifier = Modifier.fillMaxSize()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Top,
+                            ) {
+                                Text(text = dayList[page])
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(text = "Swipe left and right")
+                                if (page == 0) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Button(onClick = navigateBack) { Text("Exit") }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -97,5 +97,5 @@ fun WearApp() {
 @WearPreviewFontScales
 @Composable
 fun DefaultPreview() {
-    WearApp()
+    WearApp(navigateBack = {})
 }
