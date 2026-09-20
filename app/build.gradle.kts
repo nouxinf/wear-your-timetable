@@ -53,4 +53,5 @@ dependencies {
     androidTestImplementation(libs.ui.test.junit4)
     debugImplementation(libs.ui.test.manifest)
     debugImplementation(libs.ui.tooling)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 }
