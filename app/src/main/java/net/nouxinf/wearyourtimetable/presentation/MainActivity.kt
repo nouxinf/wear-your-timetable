@@ -8,6 +8,7 @@ package net.nouxinf.wearyourtimetable.presentation
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -60,6 +61,25 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import kotlinx.serialization.*
+import kotlinx.serialization.json.Json
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.itemsIndexed
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material3.PickerGroup
+import androidx.wear.compose.material3.TimePicker
+import androidx.wear.compose.material3.TimePickerType
+import androidx.wear.compose.material3.rememberPickerState
+import java.time.LocalTime
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,40 +89,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
+@Serializable
+data class Lesson(
+    val subject: String,
+    val room: String,
+    val hour: Int = 8,
+    val minute: Int = 30,
+)
 val dayList = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 
 val Context.dataStore by preferencesDataStore(name = "timetable")
 
 object Keys {
-    val MONDAY = stringPreferencesKey("monday")
-    val TUESDAY = stringPreferencesKey("tuesday")
-    val WEDNESDAY = stringPreferencesKey("wednesday")
-    val THURSDAY = stringPreferencesKey("thursday")
-    val FRIDAY = stringPreferencesKey("friday")
-
-    val DAYS = listOf (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY)
+    val WEEK = stringPreferencesKey("week")
 }
 
+
 class TimetableRepository(private val context: Context) {
-    private val defaults = listOf(
-        "Maths 9:00",
-        "Physics 10:00",
-        "English 11:00",
-        "Social Studies 12:00",
-        "PE 13:00",
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private val defaults: List<List<Lesson>> = listOf(
+        listOf(Lesson("Maths", "A1", 10, 30), Lesson("Physics", "B2", 11, 20)),
+        listOf(Lesson("English", "C3", 9, 30)),
+        listOf(Lesson("Social Studies", "A4", 9, 30)),
+        listOf(Lesson("PE", "Gym", 9, 30)),
+        listOf(Lesson("Art", "D1", 9, 30)),
     )
 
-    val week: Flow<List<String>> = context.dataStore.data.map { prefs -> Keys.DAYS.mapIndexed { i, key -> prefs[key] ?: defaults[i] } }
+    private fun decode(raw: String?): List<List<Lesson>> =
+        raw?.let { runCatching { json.decodeFromString<List<List<Lesson>>>(it) }.getOrNull() }
+            ?: defaults
 
-    suspend fun setDay(dayIndex: Int, text: String) {
-        context.dataStore.edit { prefs -> prefs[Keys.DAYS[dayIndex]] = text }
-    }
-    suspend fun seedDefaults() {
+    val week: Flow<List<List<Lesson>>> =
+        context.dataStore.data.map { prefs -> decode(prefs[Keys.WEEK]) }
+
+    suspend fun setDay(dayIndex: Int, lessons: List<Lesson>) {
         context.dataStore.edit { prefs ->
-            Keys.DAYS.forEachIndexed { i, key ->
-                if (key !in prefs) prefs[key] = defaults[i]
-            }
+            val updated = decode(prefs[Keys.WEEK]).toMutableList()
+            updated[dayIndex] = lessons
+            prefs[Keys.WEEK] = json.encodeToString(updated)
         }
     }
 }
@@ -151,7 +176,7 @@ fun TimetableScreen(
     pagerState: PagerState,
     onEdit: (Int) -> Unit
 ) {
-    val week by repo.week.collectAsState(initial = List(5) { "" })
+    val week by repo.week.collectAsState(initial = List(5) { emptyList() })
 
     HorizontalPagerScaffold(pagerState = pagerState) {
         HorizontalPager(
@@ -167,7 +192,9 @@ fun TimetableScreen(
                     ) {
                         Text(text = dayList[page])
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = week[page])
+                        week[page].forEach { lesson ->
+                            Text("${formatTime(lesson.hour, lesson.minute)} ${lesson.subject} - ${lesson.room}")
+                        }
                         Button(onClick = { onEdit(page) }) { Text("Edit") }
                     }
                 }
@@ -184,42 +211,126 @@ fun startPage(): Int {
 @Composable
 fun EditScreen(repo: TimetableRepository, dayIndex: Int, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
+    val lessons = remember { mutableStateListOf<Lesson>() }
+    val listState = rememberScalingLazyListState()
+    // Index of the lesson whose time is being edited, or null when showing the list
+    var pickingTimeFor by remember { mutableStateOf<Int?>(null) }
 
-    // Runs once when the screen opens: load the saved text into the box
     LaunchedEffect(Unit) {
-        text = repo.week.first()[dayIndex]
-    }
-    val save: () -> Unit = {
-        scope.launch {
-            repo.setDay(dayIndex, text.trim())
-            onDone()
-        }
+        lessons.clear()
+        lessons.addAll(repo.week.first()[dayIndex])
     }
 
-    ScreenScaffold {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(text = dayList[dayIndex])
-            Spacer(modifier = Modifier.height(8.dp))
-            BasicTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { save() }),
-                textStyle = TextStyle(color = MaterialTheme.colorScheme.onBackground),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = save) { Text("Save") }
+    // Swiping back from the time picker returns to the list instead of leaving the screen
+    BackHandler(enabled = pickingTimeFor != null) { pickingTimeFor = null }
+
+    val picking = pickingTimeFor
+    if (picking != null) {
+        val lesson = lessons[picking]
+        TimePicker(
+            initialTime = LocalTime.of(lesson.hour, lesson.minute),
+            onTimePicked = { time ->
+                lessons[picking] = lesson.copy(hour = time.hour, minute = time.minute)
+                pickingTimeFor = null
+            },
+            timePickerType = TimePickerType.HoursMinutes24H,
+        )
+    } else {
+        ScreenScaffold(scrollState = listState) {
+            ScalingLazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                contentPadding = PaddingValues(top = 10.dp),
+            ) {
+                item { Text(dayList[dayIndex]) }
+
+                itemsIndexed(lessons) { index, lesson ->
+                    Column(
+                        modifier = Modifier.padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        LessonField(
+                            value = lesson.subject,
+                            hint = "Subject",
+                            imeAction = ImeAction.Next,
+                            onChange = { lessons[index] = lessons[index].copy(subject = it) },
+                        )
+                        Button(onClick = { pickingTimeFor = index }) {
+                            Text(formatTime(lesson.hour, lesson.minute))
+                        }
+                        LessonField(
+                            value = lesson.room,
+                            hint = "Room",
+                            imeAction = ImeAction.Done,
+                            onChange = { lessons[index] = lessons[index].copy(room = it) },
+                        )
+                        Button(onClick = { lessons.removeAt(index) }) { Text("Remove") }
+                    }
+                }
+
+                item {
+                    Button(onClick = { lessons.add(Lesson("", "", 8, 30)) }) { Text("Add lesson") }
+                }
+
+                item {
+                    Button(onClick = {
+                        scope.launch {
+                            val cleaned = lessons
+                                .map { it.copy(subject = it.subject.trim(), room = it.room.trim()) }
+                                .filter { it.subject.isNotEmpty() }
+                                .sortedWith(compareBy({ it.hour }, { it.minute }))
+                            repo.setDay(dayIndex, cleaned)
+                            onDone()
+                        }
+                    }) { Text("Save") }
+                }
+            }
         }
     }
 }
 
+fun formatTime(hour: Int, minute: Int) = "%02d:%02d".format(hour, minute)
 
+@Composable
+private fun LessonField(
+    value: String,
+    hint: String,
+    imeAction: ImeAction,
+    onChange: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(value) }
+
+    // If the list changes the value from outside (e.g. a lesson above was removed), follow it
+    LaunchedEffect(value) {
+        if (value != text) text = value
+    }
+
+    BasicTextField(
+        value = text,
+        onValueChange = {
+            val cleaned = it.replace("\n", "")
+            text = cleaned
+            onChange(cleaned)
+        },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = imeAction),
+        textStyle = TextStyle(
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        ),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.Center) {
+                if (text.isEmpty()) {
+                    Text(text = hint, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                innerTextField()
+            }
+        },
+    )
+}
 
 @WearPreviewDevices
 @WearPreviewFontScales

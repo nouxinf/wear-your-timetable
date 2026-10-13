@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -55,4 +56,5 @@ dependencies {
     debugImplementation(libs.ui.tooling)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.wear.compose:compose-navigation:1.5.0")
+    implementation(libs.kotlinx.serialization.json)
 }
